@@ -13,6 +13,7 @@
             overflow: hidden;
             touch-action: none;
             background-color: #87CEEB;
+            font-family: Arial, sans-serif;
         }
         #renderCanvas {
             width: 100%;
@@ -48,36 +49,55 @@
             z-index: 30;
         }
         #mobileControls {
-            position: absolute;
+            position: fixed;
             bottom: 20px;
+            left: 0;
+            right: 0;
             width: 100%;
-            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
             z-index: 10;
+            padding: 10px;
+            box-sizing: border-box;
             display: none; /* Скрываем по умолчанию */
         }
         .controlBtn {
-            display: inline-block;
-            width: 80px;
-            height: 80px;
-            background-color: rgba(255,255,255,0.5);
+            width: 70px;
+            height: 70px;
+            background-color: rgba(255, 255, 255, 0.7);
             border-radius: 50%;
-            margin: 0 20px;
-            line-height: 80px;
-            font-size: 24px;
-            user-select: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 30px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.1s, background-color 0.2s;
             -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
-        #leftBtn, #rightBtn {
-            transition: background-color 0.2s;
+        .controlBtn.active {
+            background-color: rgba(255, 165, 0, 0.9);
+            transform: scale(0.95);
         }
-        #leftBtn.active, #rightBtn.active, #jumpBtn.active {
-            background-color: rgba(255,165,0,0.8);
+        #scoreDisplay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            z-index: 10;
         }
     </style>
 </head>
 <body>
     <div id="loadingScreen">Загрузка игры...</div>
     <div id="errorMessage"></div>
+    <div id="scoreDisplay">Счет: 0</div>
     <canvas id="renderCanvas"></canvas>
     <div id="mobileControls">
         <div id="leftBtn" class="controlBtn">←</div>
@@ -112,17 +132,20 @@
                 
                 // Устанавливаем элементы управления для мобильных устройств
                 const mobileControls = document.getElementById('mobileControls');
-                mobileControls.style.display = isMobile ? 'block' : 'none';
+                mobileControls.style.display = isMobile ? 'flex' : 'none';
                 
                 console.log("Устройство определено как: " + (isMobile ? "мобильное" : "настольное"));
+                
+                // Счетчик очков
+                let score = 0;
                 
                 // Создаем сцену
                 const createScene = function() {
                     const scene = new BABYLON.Scene(engine);
                     scene.clearColor = new BABYLON.Color4(0.53, 0.81, 0.92, 1.0); // Небесно-голубой фон
                     
-                    // Установка физики
-                    const gravityVector = new BABYLON.Vector3(0, -9.81, 0);
+                    // Установка физики с уменьшенной гравитацией для лучших прыжков
+                    const gravityVector = new BABYLON.Vector3(0, -8.0, 0); // Уменьшенная гравитация
                     const physicsPlugin = new BABYLON.CannonJSPlugin();
                     scene.enablePhysics(gravityVector, physicsPlugin);
                     
@@ -155,6 +178,9 @@
                         scene
                     );
                     
+                    // Массив для хранения всех объектов платформ
+                    const rails = [];
+                    
                     // Функция для создания рельса
                     const createRail = function(posX, posY, posZ, width, height, length) {
                         const rail = BABYLON.MeshBuilder.CreateBox("rail", {
@@ -177,15 +203,66 @@
                             scene
                         );
                         
+                        rails.push({
+                            mesh: rail,
+                            position: new BABYLON.Vector3(posX, posY, posZ),
+                            size: new BABYLON.Vector3(width, height, length)
+                        });
+                        
                         return rail;
                     };
                     
                     // Создаем уровень из рельсов с промежутками
-                    createRail(0, 0, 0, 4, 1, 15);            // Начальный рельс
-                    createRail(0, 0, -20, 4, 1, 10);          // Рельс после первого промежутка
-                    createRail(5, 0, -35, 4, 1, 10);          // Рельс с поворотом вправо
-                    createRail(0, 0, -50, 4, 1, 10);          // Рельс с поворотом влево
-                    createRail(0, 0, -65, 6, 1, 10);          // Финальный рельс
+                    // Начальный рельс
+                    createRail(0, 0, 0, 4, 1, 15);
+                    
+                    // Рельс после первого промежутка
+                    // Промежуток уменьшен для лучшей играбельности
+                    createRail(0, 0, -17, 4, 1, 10);
+                    
+                    // Рельс с поворотом вправо
+                    createRail(5, 0, -30, 4, 1, 10);
+                    
+                    // Рельс с поворотом влево
+                    createRail(0, 0, -45, 4, 1, 10);
+                    
+                    // Финальный рельс
+                    createRail(0, 0, -60, 6, 1, 10);
+                    
+                    // Добавляем кольца для сбора (как в оригинальном Сонике)
+                    const rings = [];
+                    
+                    // Функция для создания кольца
+                    const createRing = function(posX, posY, posZ) {
+                        const ring = BABYLON.MeshBuilder.CreateTorus("ring", {
+                            diameter: 1,
+                            thickness: 0.2,
+                            tessellation: 16
+                        }, scene);
+                        
+                        const ringMaterial = new BABYLON.StandardMaterial("ringMaterial", scene);
+                        ringMaterial.diffuseColor = new BABYLON.Color3(1, 0.8, 0);
+                        ringMaterial.emissiveColor = new BABYLON.Color3(0.5, 0.4, 0);
+                        ring.material = ringMaterial;
+                        
+                        ring.position = new BABYLON.Vector3(posX, posY, posZ);
+                        ring.rotation.x = Math.PI/2; // Поворачиваем кольцо вертикально
+                        
+                        rings.push(ring);
+                        return ring;
+                    };
+                    
+                    // Добавляем кольца на платформы и над промежутками
+                    createRing(0, 1.5, -5);
+                    createRing(0, 1.5, -10);
+                    createRing(0, 2.0, -13.5); // Над первым промежутком
+                    createRing(0, 1.5, -20);
+                    createRing(2.5, 1.5, -25);
+                    createRing(5, 2.0, -26.5); // Над вторым промежутком
+                    createRing(5, 1.5, -35);
+                    createRing(2.5, 2.0, -40); // Над третьим промежутком
+                    createRing(0, 1.5, -50);
+                    createRing(0, 1.5, -55);
                     
                     // Переменные для управления
                     let forwardSpeed = -0.2;  // Скорость вперёд (отрицательная по Z)
@@ -211,7 +288,29 @@
                         }
                     };
                     
-                    // Функция прыжка
+                    // Функция для нахождения ближайшей платформы впереди
+                    const findNextPlatform = function() {
+                        let closestDistance = Infinity;
+                        let closestPlatform = null;
+                        
+                        for (const rail of rails) {
+                            // Проверяем только платформы впереди игрока
+                            if (rail.position.z < ball.position.z) {
+                                // Вычисляем расстояние до платформы
+                                const dist = BABYLON.Vector3.Distance(ball.position, rail.position);
+                                
+                                // Если это ближайшая платформа спереди, запоминаем ее
+                                if (dist < closestDistance) {
+                                    closestDistance = dist;
+                                    closestPlatform = rail;
+                                }
+                            }
+                        }
+                        
+                        return { platform: closestPlatform, distance: closestDistance };
+                    };
+                    
+                    // Функция прыжка с проверкой расстояния до следующей платформы
                     const jump = function() {
                         // Проверяем, что мяч на земле (не в прыжке)
                         const raycast = new BABYLON.Ray(ball.position, new BABYLON.Vector3(0, -1, 0), 1.5);
@@ -219,8 +318,23 @@
                         
                         if (hit.hit && !isJumping) {
                             isJumping = true;
+                            
+                            // Находим следующую платформу и расстояние до нее
+                            const nextPlatform = findNextPlatform();
+                            
+                            // Базовая сила прыжка
+                            let jumpForce = 9.0;
+                            
+                            // Если есть платформа впереди, корректируем силу прыжка
+                            if (nextPlatform.platform && nextPlatform.distance < 15) {
+                                // Увеличиваем силу прыжка в зависимости от расстояния
+                                jumpForce = Math.max(jumpForce, 9.0 + nextPlatform.distance * 0.2);
+                                console.log("Прыжок с силой: " + jumpForce + " на расстояние: " + nextPlatform.distance);
+                            }
+                            
+                            // Применяем импульс для прыжка
                             ball.physicsImpostor.applyImpulse(
-                                new BABYLON.Vector3(0, 8, 0), 
+                                new BABYLON.Vector3(0, jumpForce, 0), 
                                 ball.getAbsolutePosition()
                             );
                             
@@ -281,6 +395,25 @@
                         }, {passive: false});
                     }
                     
+                    // Функция для проверки сбора колец
+                    const checkRingCollection = function() {
+                        for (let i = rings.length - 1; i >= 0; i--) {
+                            const ring = rings[i];
+                            const distance = BABYLON.Vector3.Distance(ball.position, ring.position);
+                            
+                            // Если мяч коснулся кольца
+                            if (distance < 1.5) {
+                                // Увеличиваем счет
+                                score += 10;
+                                document.getElementById('scoreDisplay').textContent = "Счет: " + score;
+                                
+                                // Удаляем кольцо
+                                ring.dispose();
+                                rings.splice(i, 1);
+                            }
+                        }
+                    };
+                    
                     // Обновление игры на каждом кадре
                     scene.registerBeforeRender(function() {
                         // Движение мяча вперед автоматически и по горизонтали
@@ -296,8 +429,7 @@
                         // Вращение мяча при движении
                         ball.rotate(BABYLON.Vector3.Right(), -forwardSpeed * 0.2);
                         
-                        // Обновление позиции камеры - КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
-                        // Камера всегда находится позади и немного выше мяча
+                        // Обновление позиции камеры - следование за мячом
                         camera.position.x = ball.position.x;
                         camera.position.y = ball.position.y + 5;
                         camera.position.z = ball.position.z + 10;
@@ -305,10 +437,22 @@
                         // Камера смотрит на мяч
                         camera.setTarget(ball.position);
                         
+                        // Проверка сбора колец
+                        checkRingCollection();
+                        
+                        // Анимация вращения колец
+                        for (const ring of rings) {
+                            ring.rotation.y += 0.02;
+                        }
+                        
                         // Проверка падения в пропасть
                         if (ball.position.y < -10) {
                             ball.position = new BABYLON.Vector3(0, 5, 0);
                             ball.physicsImpostor.setLinearVelocity(new BABYLON.Vector3(0, 0, 0));
+                            
+                            // Сброс счета при падении
+                            score = Math.max(0, score - 50);
+                            document.getElementById('scoreDisplay').textContent = "Счет: " + score;
                         }
                     });
                     
