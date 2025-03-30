@@ -154,13 +154,26 @@
                         const physicsPlugin = new BABYLON.CannonJSPlugin();
                         scene.enablePhysics(gravityVector, physicsPlugin);
                         
-                        // Создаем камеру
-                        const camera = new BABYLON.FollowCamera("camera", new BABYLON.Vector3(0, 5, 10), scene);
-                        camera.radius = 15; // Расстояние от целевого объекта
-                        camera.heightOffset = 6; // Высота над целевым объектом (увеличена для лучшего обзора)
-                        camera.rotationOffset = 180; // Угол обзора
-                        camera.cameraAcceleration = 0.05; // Плавность следования
-                        camera.maxCameraSpeed = 10; // Максимальная скорость камеры
+                        // ======= СТАБИЛЬНЫЙ ПОДХОД К КАМЕРЕ ========
+                        // Создаем контейнер, который будет следовать за мячом для стабильности камеры
+                        const cameraTarget = new BABYLON.TransformNode("cameraTarget");
+                        
+                        // Создаем фиксированную камеру третьего лица
+                        const camera = new BABYLON.ArcRotateCamera(
+                            "camera", 
+                            Math.PI, // альфа - поворот вокруг оси Y (180 градусов)
+                            Math.PI/3, // бета - поворот вокруг оси X (60 градусов)
+                            20, // радиус (расстояние от камеры до объекта)
+                            cameraTarget.position, // целевая точка
+                            scene
+                        );
+                        
+                        // Ограничиваем камеру для предотвращения произвольного вращения
+                        camera.lowerBetaLimit = Math.PI/4; // Минимальный угол наклона (45 градусов)
+                        camera.upperBetaLimit = Math.PI/2.5; // Максимальный угол наклона (72 градуса)
+                        
+                        // Отключаем пользовательское управление камерой для стабильного просмотра
+                        camera.inputs.clear();
                         
                         // Создаем свет
                         const light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
@@ -186,9 +199,6 @@
                             { mass: 1, restitution: 0.5, friction: 0.1 }, 
                             scene
                         );
-                        
-                        // Настраиваем камеру, чтобы следовать за мячом
-                        camera.lockedTarget = ball;
                         
                         // Создаем массив для хранения рельсов
                         const rails = [];
@@ -320,6 +330,10 @@
                             }, {passive: false});
                         }
                         
+                        // Создаем переменную для сглаживания перемещения контейнера камеры
+                        let smoothFactor = 0.1;
+                        let lastKnownBallPosition = ball.position.clone();
+                        
                         // Обновление игры на каждом кадре
                         scene.registerBeforeRender(function() {
                             // Движение мяча вперед автоматически и по горизонтали
@@ -333,12 +347,29 @@
                             );
                             
                             // Вращение мяча при движении
-                            ball.rotate(BABYLON.Vector3.Forward(), -forwardSpeed * 0.1);
+                            ball.rotate(BABYLON.Vector3.Right(), -forwardSpeed * 0.2);
+                            
+                            // Сглаженное перемещение контейнера камеры за мячом
+                            // Это ключевое исправление для стабильной камеры
+                            cameraTarget.position = BABYLON.Vector3.Lerp(
+                                cameraTarget.position,
+                                new BABYLON.Vector3(
+                                    ball.position.x, 
+                                    ball.position.y, 
+                                    ball.position.z
+                                ),
+                                smoothFactor
+                            );
+                            
+                            // Сохраняем текущую позицию мяча
+                            lastKnownBallPosition = ball.position.clone();
                             
                             // Проверка падения в пропасть
                             if (ball.position.y < -10) {
                                 ball.position = new BABYLON.Vector3(0, 5, 0);
                                 ball.physicsImpostor.setLinearVelocity(new BABYLON.Vector3(0, 0, 0));
+                                // Также сбрасываем позицию контейнера камеры
+                                cameraTarget.position = ball.position.clone();
                             }
                         });
                         
