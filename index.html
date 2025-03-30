@@ -360,7 +360,7 @@
                         leftBtn.addEventListener('touchstart', function(e) {
                             e.preventDefault();
                             isTouchingLeft = true;
-                            horizontalMovement = -0.2;
+                            horizontalMovement = 0.2;
                             leftBtn.classList.add('active');
                         }, {passive: false});
                         
@@ -375,7 +375,7 @@
                         rightBtn.addEventListener('touchstart', function(e) {
                             e.preventDefault();
                             isTouchingRight = true;
-                            horizontalMovement = 0.2;
+                            horizontalMovement = -0.2;
                             rightBtn.classList.add('active');
                         }, {passive: false});
                         
