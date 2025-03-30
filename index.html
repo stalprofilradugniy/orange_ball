@@ -85,8 +85,11 @@
         <div id="rightBtn" class="controlBtn">→</div>
     </div>
     
-    <!-- Загрузка Babylon.js с CDN с обработкой ошибок -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/cannon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
     <script>
+        // Отображение ошибок
         function showError(message) {
             const errorDiv = document.getElementById('errorMessage');
             errorDiv.innerText = message;
@@ -94,44 +97,14 @@
             document.getElementById('loadingScreen').style.display = 'none';
         }
 
-        // Динамическая загрузка скриптов с обработкой ошибок
-        function loadScript(url, callback) {
-            const script = document.createElement('script');
-            script.type = 'text/javascript';
-            script.src = url;
-            script.onload = callback;
-            script.onerror = function() {
-                showError(`Ошибка загрузки библиотеки: ${url}. Проверьте соединение и попробуйте обновить страницу.`);
-            };
-            document.head.appendChild(script);
-        }
-
-        // Последовательная загрузка необходимых библиотек
-        loadScript('https://cdn.babylonjs.com/babylon.js', function() {
-            loadScript('https://cdn.babylonjs.com/cannon.js', function() {
-                loadScript('https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js', function() {
-                    loadScript('https://cdn.babylonjs.com/gui/babylon.gui.min.js', initGame);
-                });
-            });
-        });
-
-        // Инициализация игры после загрузки всех библиотек
-        function initGame() {
-            // Код игры будет здесь
-            window.addEventListener('DOMContentLoaded', startGame);
-            // Если DOMContentLoaded уже прошел, запускаем сразу
-            if (document.readyState === 'interactive' || document.readyState === 'complete') {
-                startGame();
-            }
-        }
-
-        function startGame() {
+        // Главная функция запуска игры
+        window.addEventListener('DOMContentLoaded', function() {
             try {
                 // Получаем canvas и создаем движок
                 const canvas = document.getElementById('renderCanvas');
                 const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
                 
-                // Определяем, используется ли мобильное устройство более надежным способом
+                // Определяем, используется ли мобильное устройство
                 const isMobile = ('ontouchstart' in window) || 
                                 (navigator.maxTouchPoints > 0) || 
                                 (navigator.msMaxTouchPoints > 0) ||
@@ -143,241 +116,203 @@
                 
                 console.log("Устройство определено как: " + (isMobile ? "мобильное" : "настольное"));
                 
-                // Создаем функцию для создания сцены
+                // Создаем сцену
                 const createScene = function() {
-                    try {
-                        const scene = new BABYLON.Scene(engine);
-                        scene.clearColor = new BABYLON.Color4(0.53, 0.81, 0.92, 1.0); // Небесно-голубой фон
+                    const scene = new BABYLON.Scene(engine);
+                    scene.clearColor = new BABYLON.Color4(0.53, 0.81, 0.92, 1.0); // Небесно-голубой фон
+                    
+                    // Установка физики
+                    const gravityVector = new BABYLON.Vector3(0, -9.81, 0);
+                    const physicsPlugin = new BABYLON.CannonJSPlugin();
+                    scene.enablePhysics(gravityVector, physicsPlugin);
+                    
+                    // Создаем простую камеру
+                    const camera = new BABYLON.FreeCamera("camera", new BABYLON.Vector3(0, 5, 10), scene);
+                    camera.setTarget(new BABYLON.Vector3(0, 0, 0));
+                    
+                    // Создаем свет
+                    const light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+                    light1.intensity = 0.7;
+                    
+                    // Направленный свет для лучших теней
+                    const light2 = new BABYLON.DirectionalLight("light2", new BABYLON.Vector3(0, -1, 1), scene);
+                    light2.intensity = 0.5;
+                    
+                    // Создаем оранжевый мяч (игрок)
+                    const ball = BABYLON.MeshBuilder.CreateSphere("ball", {diameter: 2, segments: 16}, scene);
+                    const ballMaterial = new BABYLON.StandardMaterial("ballMaterial", scene);
+                    ballMaterial.diffuseColor = new BABYLON.Color3(1, 0.5, 0);
+                    ballMaterial.specularColor = new BABYLON.Color3(0.8, 0.8, 0.8);
+                    ballMaterial.specularPower = 32;
+                    ball.material = ballMaterial;
+                    ball.position.y = 4; // Поднимаем мяч выше для начала игры
+                    
+                    // Добавляем физическое тело к мячу
+                    ball.physicsImpostor = new BABYLON.PhysicsImpostor(
+                        ball, 
+                        BABYLON.PhysicsImpostor.SphereImpostor, 
+                        { mass: 1, restitution: 0.5, friction: 0.1 }, 
+                        scene
+                    );
+                    
+                    // Функция для создания рельса
+                    const createRail = function(posX, posY, posZ, width, height, length) {
+                        const rail = BABYLON.MeshBuilder.CreateBox("rail", {
+                            width: width,
+                            height: height,
+                            depth: length
+                        }, scene);
                         
-                        // Установка физики
-                        const gravityVector = new BABYLON.Vector3(0, -9.81, 0);
-                        const physicsPlugin = new BABYLON.CannonJSPlugin();
-                        scene.enablePhysics(gravityVector, physicsPlugin);
+                        const railMaterial = new BABYLON.StandardMaterial("railMaterial", scene);
+                        railMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.4, 0.4);
+                        rail.material = railMaterial;
                         
-                        // ======= СТАБИЛЬНЫЙ ПОДХОД К КАМЕРЕ ========
-                        // Создаем контейнер, который будет следовать за мячом для стабильности камеры
-                        const cameraTarget = new BABYLON.TransformNode("cameraTarget");
+                        rail.position = new BABYLON.Vector3(posX, posY, posZ);
                         
-                        // Создаем фиксированную камеру третьего лица
-                        const camera = new BABYLON.ArcRotateCamera(
-                            "camera", 
-                            Math.PI, // альфа - поворот вокруг оси Y (180 градусов)
-                            Math.PI/3, // бета - поворот вокруг оси X (60 градусов)
-                            20, // радиус (расстояние от камеры до объекта)
-                            cameraTarget.position, // целевая точка
+                        // Добавляем физическое тело к рельсу (неподвижное)
+                        rail.physicsImpostor = new BABYLON.PhysicsImpostor(
+                            rail, 
+                            BABYLON.PhysicsImpostor.BoxImpostor, 
+                            { mass: 0, restitution: 0.9 }, 
                             scene
                         );
                         
-                        // Ограничиваем камеру для предотвращения произвольного вращения
-                        camera.lowerBetaLimit = Math.PI/4; // Минимальный угол наклона (45 градусов)
-                        camera.upperBetaLimit = Math.PI/2.5; // Максимальный угол наклона (72 градуса)
-                        
-                        // Отключаем пользовательское управление камерой для стабильного просмотра
-                        camera.inputs.clear();
-                        
-                        // Создаем свет
-                        const light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
-                        light1.intensity = 0.7;
-                        
-                        // Направленный свет для лучших теней
-                        const light2 = new BABYLON.DirectionalLight("light2", new BABYLON.Vector3(0, -1, 1), scene);
-                        light2.intensity = 0.5;
-                        
-                        // Создаем оранжевый мяч (игрок)
-                        const ball = BABYLON.MeshBuilder.CreateSphere("ball", {diameter: 2, segments: 16}, scene);
-                        const ballMaterial = new BABYLON.StandardMaterial("ballMaterial", scene);
-                        ballMaterial.diffuseColor = new BABYLON.Color3(1, 0.5, 0);
-                        ballMaterial.specularColor = new BABYLON.Color3(0.8, 0.8, 0.8);
-                        ballMaterial.specularPower = 32;
-                        ball.material = ballMaterial;
-                        ball.position.y = 4; // Поднимаем мяч выше для начала игры
-                        
-                        // Добавляем физическое тело к мячу
-                        ball.physicsImpostor = new BABYLON.PhysicsImpostor(
-                            ball, 
-                            BABYLON.PhysicsImpostor.SphereImpostor, 
-                            { mass: 1, restitution: 0.5, friction: 0.1 }, 
-                            scene
-                        );
-                        
-                        // Создаем массив для хранения рельсов
-                        const rails = [];
-                        
-                        // Функция для создания рельса
-                        const createRail = function(posX, posY, posZ, width, height, length) {
-                            const rail = BABYLON.MeshBuilder.CreateBox("rail", {
-                                width: width,
-                                height: height,
-                                depth: length
-                            }, scene);
-                            
-                            const railMaterial = new BABYLON.StandardMaterial("railMaterial", scene);
-                            railMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.4, 0.4);
-                            rail.material = railMaterial;
-                            
-                            rail.position = new BABYLON.Vector3(posX, posY, posZ);
-                            
-                            // Добавляем физическое тело к рельсу (неподвижное)
-                            rail.physicsImpostor = new BABYLON.PhysicsImpostor(
-                                rail, 
-                                BABYLON.PhysicsImpostor.BoxImpostor, 
-                                { mass: 0, restitution: 0.9 }, 
-                                scene
-                            );
-                            
-                            rails.push(rail);
-                            return rail;
-                        };
-                        
-                        // Создаем уровень из рельсов с промежутками
-                        createRail(0, 0, 0, 4, 1, 15);            // Начальный рельс
-                        createRail(0, 0, -20, 4, 1, 10);          // Рельс после первого промежутка
-                        createRail(5, 0, -35, 4, 1, 10);          // Рельс с поворотом вправо
-                        createRail(0, 0, -50, 4, 1, 10);          // Рельс с поворотом влево
-                        createRail(0, 0, -65, 6, 1, 10);          // Финальный рельс
-                        
-                        // Переменные для управления
-                        let forwardSpeed = -0.2;  // Скорость вперёд (отрицательная по Z)
-                        let isJumping = false;
-                        let horizontalMovement = 0;
-                        
-                        // Обработка клавиш для ПК
-                        const keyDown = (evt) => {
-                            if (evt.keyCode === 32) { // Пробел
-                                jump();
-                            } else if (evt.keyCode === 37) { // Стрелка влево
-                                horizontalMovement = -0.2;
-                            } else if (evt.keyCode === 39) { // Стрелка вправо
-                                horizontalMovement = 0.2;
-                            }
-                        };
-                        
-                        const keyUp = (evt) => {
-                            if (evt.keyCode === 37 && horizontalMovement < 0) {
-                                horizontalMovement = 0;
-                            } else if (evt.keyCode === 39 && horizontalMovement > 0) {
-                                horizontalMovement = 0;
-                            }
-                        };
-                        
-                        // Функция прыжка
-                        const jump = function() {
-                            // Проверяем, что мяч на земле (не в прыжке)
-                            const raycast = new BABYLON.Ray(ball.position, new BABYLON.Vector3(0, -1, 0), 1.5);
-                            const hit = scene.pickWithRay(raycast);
-                            
-                            if (hit.hit && !isJumping) {
-                                isJumping = true;
-                                ball.physicsImpostor.applyImpulse(
-                                    new BABYLON.Vector3(0, 8, 0), 
-                                    ball.getAbsolutePosition()
-                                );
-                                
-                                setTimeout(() => { isJumping = false; }, 1000);
-                            }
-                        };
-                        
-                        // Настройка обработчиков для ПК
-                        window.addEventListener("keydown", keyDown);
-                        window.addEventListener("keyup", keyUp);
-                        
-                        // Настройка сенсорных элементов управления для мобильных устройств
-                        if (isMobile) {
-                            const leftBtn = document.getElementById('leftBtn');
-                            const rightBtn = document.getElementById('rightBtn');
-                            const jumpBtn = document.getElementById('jumpBtn');
-                            
-                            // Функции для сенсорного управления
-                            let isTouchingLeft = false;
-                            let isTouchingRight = false;
-                            
-                            // Обработка кнопки влево
-                            leftBtn.addEventListener('touchstart', function(e) {
-                                e.preventDefault();
-                                isTouchingLeft = true;
-                                horizontalMovement = -0.2;
-                                leftBtn.classList.add('active');
-                            }, {passive: false});
-                            
-                            leftBtn.addEventListener('touchend', function(e) {
-                                e.preventDefault();
-                                isTouchingLeft = false;
-                                if (!isTouchingRight) horizontalMovement = 0;
-                                leftBtn.classList.remove('active');
-                            }, {passive: false});
-                            
-                            // Обработка кнопки вправо
-                            rightBtn.addEventListener('touchstart', function(e) {
-                                e.preventDefault();
-                                isTouchingRight = true;
-                                horizontalMovement = 0.2;
-                                rightBtn.classList.add('active');
-                            }, {passive: false});
-                            
-                            rightBtn.addEventListener('touchend', function(e) {
-                                e.preventDefault();
-                                isTouchingRight = false;
-                                if (!isTouchingLeft) horizontalMovement = 0;
-                                rightBtn.classList.remove('active');
-                            }, {passive: false});
-                            
-                            // Обработка кнопки прыжка
-                            jumpBtn.addEventListener('touchstart', function(e) {
-                                e.preventDefault();
-                                jump();
-                                jumpBtn.classList.add('active');
-                                setTimeout(() => jumpBtn.classList.remove('active'), 200);
-                            }, {passive: false});
+                        return rail;
+                    };
+                    
+                    // Создаем уровень из рельсов с промежутками
+                    createRail(0, 0, 0, 4, 1, 15);            // Начальный рельс
+                    createRail(0, 0, -20, 4, 1, 10);          // Рельс после первого промежутка
+                    createRail(5, 0, -35, 4, 1, 10);          // Рельс с поворотом вправо
+                    createRail(0, 0, -50, 4, 1, 10);          // Рельс с поворотом влево
+                    createRail(0, 0, -65, 6, 1, 10);          // Финальный рельс
+                    
+                    // Переменные для управления
+                    let forwardSpeed = -0.2;  // Скорость вперёд (отрицательная по Z)
+                    let isJumping = false;
+                    let horizontalMovement = 0;
+                    
+                    // Обработка клавиш для ПК
+                    const keyDown = (evt) => {
+                        if (evt.keyCode === 32) { // Пробел
+                            jump();
+                        } else if (evt.keyCode === 37) { // Стрелка влево
+                            horizontalMovement = -0.2;
+                        } else if (evt.keyCode === 39) { // Стрелка вправо
+                            horizontalMovement = 0.2;
                         }
+                    };
+                    
+                    const keyUp = (evt) => {
+                        if (evt.keyCode === 37 && horizontalMovement < 0) {
+                            horizontalMovement = 0;
+                        } else if (evt.keyCode === 39 && horizontalMovement > 0) {
+                            horizontalMovement = 0;
+                        }
+                    };
+                    
+                    // Функция прыжка
+                    const jump = function() {
+                        // Проверяем, что мяч на земле (не в прыжке)
+                        const raycast = new BABYLON.Ray(ball.position, new BABYLON.Vector3(0, -1, 0), 1.5);
+                        const hit = scene.pickWithRay(raycast);
                         
-                        // Создаем переменную для сглаживания перемещения контейнера камеры
-                        let smoothFactor = 0.1;
-                        let lastKnownBallPosition = ball.position.clone();
-                        
-                        // Обновление игры на каждом кадре
-                        scene.registerBeforeRender(function() {
-                            // Движение мяча вперед автоматически и по горизонтали
-                            const currentVelocity = ball.physicsImpostor.getLinearVelocity();
-                            ball.physicsImpostor.setLinearVelocity(
-                                new BABYLON.Vector3(
-                                    horizontalMovement * 10, 
-                                    currentVelocity.y, 
-                                    forwardSpeed * 15
-                                )
+                        if (hit.hit && !isJumping) {
+                            isJumping = true;
+                            ball.physicsImpostor.applyImpulse(
+                                new BABYLON.Vector3(0, 8, 0), 
+                                ball.getAbsolutePosition()
                             );
                             
-                            // Вращение мяча при движении
-                            ball.rotate(BABYLON.Vector3.Right(), -forwardSpeed * 0.2);
-                            
-                            // Сглаженное перемещение контейнера камеры за мячом
-                            // Это ключевое исправление для стабильной камеры
-                            cameraTarget.position = BABYLON.Vector3.Lerp(
-                                cameraTarget.position,
-                                new BABYLON.Vector3(
-                                    ball.position.x, 
-                                    ball.position.y, 
-                                    ball.position.z
-                                ),
-                                smoothFactor
-                            );
-                            
-                            // Сохраняем текущую позицию мяча
-                            lastKnownBallPosition = ball.position.clone();
-                            
-                            // Проверка падения в пропасть
-                            if (ball.position.y < -10) {
-                                ball.position = new BABYLON.Vector3(0, 5, 0);
-                                ball.physicsImpostor.setLinearVelocity(new BABYLON.Vector3(0, 0, 0));
-                                // Также сбрасываем позицию контейнера камеры
-                                cameraTarget.position = ball.position.clone();
-                            }
-                        });
+                            setTimeout(() => { isJumping = false; }, 1000);
+                        }
+                    };
+                    
+                    // Настройка обработчиков для ПК
+                    window.addEventListener("keydown", keyDown);
+                    window.addEventListener("keyup", keyUp);
+                    
+                    // Настройка сенсорных элементов управления для мобильных устройств
+                    if (isMobile) {
+                        const leftBtn = document.getElementById('leftBtn');
+                        const rightBtn = document.getElementById('rightBtn');
+                        const jumpBtn = document.getElementById('jumpBtn');
                         
-                        return scene;
-                    } catch (e) {
-                        showError("Ошибка при создании сцены: " + e.message);
-                        throw e;
+                        // Функции для сенсорного управления
+                        let isTouchingLeft = false;
+                        let isTouchingRight = false;
+                        
+                        // Обработка кнопки влево
+                        leftBtn.addEventListener('touchstart', function(e) {
+                            e.preventDefault();
+                            isTouchingLeft = true;
+                            horizontalMovement = -0.2;
+                            leftBtn.classList.add('active');
+                        }, {passive: false});
+                        
+                        leftBtn.addEventListener('touchend', function(e) {
+                            e.preventDefault();
+                            isTouchingLeft = false;
+                            if (!isTouchingRight) horizontalMovement = 0;
+                            leftBtn.classList.remove('active');
+                        }, {passive: false});
+                        
+                        // Обработка кнопки вправо
+                        rightBtn.addEventListener('touchstart', function(e) {
+                            e.preventDefault();
+                            isTouchingRight = true;
+                            horizontalMovement = 0.2;
+                            rightBtn.classList.add('active');
+                        }, {passive: false});
+                        
+                        rightBtn.addEventListener('touchend', function(e) {
+                            e.preventDefault();
+                            isTouchingRight = false;
+                            if (!isTouchingLeft) horizontalMovement = 0;
+                            rightBtn.classList.remove('active');
+                        }, {passive: false});
+                        
+                        // Обработка кнопки прыжка
+                        jumpBtn.addEventListener('touchstart', function(e) {
+                            e.preventDefault();
+                            jump();
+                            jumpBtn.classList.add('active');
+                            setTimeout(() => jumpBtn.classList.remove('active'), 200);
+                        }, {passive: false});
                     }
+                    
+                    // Обновление игры на каждом кадре
+                    scene.registerBeforeRender(function() {
+                        // Движение мяча вперед автоматически и по горизонтали
+                        const currentVelocity = ball.physicsImpostor.getLinearVelocity();
+                        ball.physicsImpostor.setLinearVelocity(
+                            new BABYLON.Vector3(
+                                horizontalMovement * 10, 
+                                currentVelocity.y, 
+                                forwardSpeed * 15
+                            )
+                        );
+                        
+                        // Вращение мяча при движении
+                        ball.rotate(BABYLON.Vector3.Right(), -forwardSpeed * 0.2);
+                        
+                        // Обновление позиции камеры - КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+                        // Камера всегда находится позади и немного выше мяча
+                        camera.position.x = ball.position.x;
+                        camera.position.y = ball.position.y + 5;
+                        camera.position.z = ball.position.z + 10;
+                        
+                        // Камера смотрит на мяч
+                        camera.setTarget(ball.position);
+                        
+                        // Проверка падения в пропасть
+                        if (ball.position.y < -10) {
+                            ball.position = new BABYLON.Vector3(0, 5, 0);
+                            ball.physicsImpostor.setLinearVelocity(new BABYLON.Vector3(0, 0, 0));
+                        }
+                    });
+                    
+                    return scene;
                 };
                 
                 // Создаем сцену
@@ -402,7 +337,7 @@
                 showError("Ошибка: " + error.message);
                 console.error(error);
             }
-        }
+        });
     </script>
 </body>
 </html>
