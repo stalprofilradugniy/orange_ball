@@ -181,14 +181,25 @@
                     // Массив для хранения всех объектов платформ
                     const rails = [];
                     
-                    // Массив для хранения колец
-                    const rings = [];
+                    // Массив для хранения букв
+                    const letters = [];
                     
                     // Система бесконечных платформ
                     let lastPlatformZ = 0; // Позиция последней созданной платформы
                     const platformHeight = 1; // Высота платформ
                     let baseY = 0; // Базовая высота (осевая линия)
                     let lastBaseY = 0; // Последняя базовая высота для плавного перехода
+                    
+                    // Создание материалов для букв
+                    const blueMaterial = new BABYLON.StandardMaterial("blueMaterial", scene);
+                    blueMaterial.diffuseColor = new BABYLON.Color3(0.0, 0.4, 1.0); // Синий цвет
+                    blueMaterial.specularColor = new BABYLON.Color3(0.2, 0.2, 1.0);
+                    blueMaterial.emissiveColor = new BABYLON.Color3(0.0, 0.0, 0.5);
+                    
+                    const pinkMaterial = new BABYLON.StandardMaterial("pinkMaterial", scene);
+                    pinkMaterial.diffuseColor = new BABYLON.Color3(1.0, 0.4, 0.7); // Розовый цвет
+                    pinkMaterial.specularColor = new BABYLON.Color3(1.0, 0.2, 0.5);
+                    pinkMaterial.emissiveColor = new BABYLON.Color3(0.5, 0.0, 0.2);
                     
                     // Функция для создания рельса
                     const createRail = function(posX, posY, posZ, width, height, length) {
@@ -221,24 +232,67 @@
                         return rail;
                     };
                     
-                    // Функция для создания кольца
-                    const createRing = function(posX, posY, posZ) {
-                        const ring = BABYLON.MeshBuilder.CreateTorus("ring", {
-                            diameter: 1,
-                            thickness: 0.2,
-                            tessellation: 16
+                    // Функция для создания буквы
+                    const createLetter = function(posX, posY, posZ) {
+                        // Случайно выбираем тип буквы (M или H)
+                        const isM = Math.random() > 0.5;
+                        const letterType = isM ? "M" : "H";
+                        const letterMaterial = isM ? blueMaterial : pinkMaterial;
+                        
+                        // Создаем текстовую плоскость
+                        const letterPlane = BABYLON.MeshBuilder.CreatePlane("letter", {
+                            width: 1,
+                            height: 1,
+                            sideOrientation: BABYLON.Mesh.DOUBLESIDE
                         }, scene);
                         
-                        const ringMaterial = new BABYLON.StandardMaterial("ringMaterial", scene);
-                        ringMaterial.diffuseColor = new BABYLON.Color3(1, 0.8, 0);
-                        ringMaterial.emissiveColor = new BABYLON.Color3(0.5, 0.4, 0);
-                        ring.material = ringMaterial;
+                        // Создаем динамическую текстуру для отображения текста
+                        const textureWidth = 256;
+                        const textureHeight = 256;
+                        const dynamicTexture = new BABYLON.DynamicTexture("letterTexture", {width: textureWidth, height: textureHeight}, scene);
                         
-                        ring.position = new BABYLON.Vector3(posX, posY, posZ);
-                        ring.rotation.x = Math.PI/2; // Поворачиваем кольцо вертикально
+                        // Настраиваем контекст для рисования
+                        const textureContext = dynamicTexture.getContext();
+                        textureContext.font = "bold 200px Arial";
+                        textureContext.textAlign = "center";
+                        textureContext.textBaseline = "middle";
                         
-                        rings.push(ring);
-                        return ring;
+                        // Очищаем текстуру
+                        textureContext.clearRect(0, 0, textureWidth, textureHeight);
+                        
+                        // Рисуем букву
+                        if (isM) {
+                            textureContext.fillStyle = "#0066FF"; // Синий цвет
+                        } else {
+                            textureContext.fillStyle = "#FF66AA"; // Розовый цвет
+                        }
+                        
+                        textureContext.fillText(letterType, textureWidth / 2, textureHeight / 2);
+                        dynamicTexture.update();
+                        
+                        // Создаем материал с текстурой
+                        const letterTextMaterial = new BABYLON.StandardMaterial("letterMaterial", scene);
+                        letterTextMaterial.diffuseTexture = dynamicTexture;
+                        letterTextMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+                        letterTextMaterial.emissiveColor = isM ? 
+                            new BABYLON.Color3(0.0, 0.1, 0.5) : 
+                            new BABYLON.Color3(0.5, 0.1, 0.3);
+                        letterTextMaterial.backFaceCulling = false;
+                        
+                        // Применяем материал к плоскости
+                        letterPlane.material = letterTextMaterial;
+                        
+                        // Позиционируем букву
+                        letterPlane.position = new BABYLON.Vector3(posX, posY, posZ);
+                        
+                        // Добавляем плоскость в массив букв
+                        letters.push({
+                            mesh: letterPlane,
+                            type: letterType,
+                            isM: isM
+                        });
+                        
+                        return letterPlane;
                     };
                     
                     // Функция для создания новой случайной платформы
@@ -247,7 +301,6 @@
                         const offsetX = (Math.random() * 8) - 4;
                         
                         // Случайное смещение по Y, не превышающее высоту платформы
-                        // Используем небольшую долю высоты для плавной кривой
                         const offsetY = ((Math.random() * 2) - 1) * (platformHeight * 0.7);
                         
                         // Обновляем базовую высоту с плавным переходом
@@ -270,13 +323,13 @@
                         // Обновляем позицию последней платформы
                         lastPlatformZ = newZ - length/2;
                         
-                        // Случайно добавляем кольца на платформу
-                        if (Math.random() > 0.3) { // 70% шанс для колец
-                            const ringCount = Math.floor(1 + Math.random() * 3); // 1-3 кольца
-                            for (let i = 0; i < ringCount; i++) {
-                                const ringZ = newZ + (Math.random() * length) - length/2;
-                                const ringX = offsetX + (Math.random() * width/2) - width/4;
-                                createRing(ringX, baseY + platformHeight/2 + 1.5, ringZ);
+                        // Случайно добавляем буквы на платформу
+                        if (Math.random() > 0.3) { // 70% шанс для букв
+                            const letterCount = Math.floor(1 + Math.random() * 3); // 1-3 буквы
+                            for (let i = 0; i < letterCount; i++) {
+                                const letterZ = newZ + (Math.random() * length) - length/2;
+                                const letterX = offsetX + (Math.random() * width/2) - width/4;
+                                createLetter(letterX, baseY + platformHeight/2 + 1.5, letterZ);
                             }
                         }
                         
@@ -300,11 +353,11 @@
                             }
                         }
                         
-                        // Удаляем далеко оставшиеся позади кольца
-                        for (let i = rings.length - 1; i >= 0; i--) {
-                            if (rings[i].position.z > ball.position.z + 50) {
-                                rings[i].dispose();
-                                rings.splice(i, 1);
+                        // Удаляем далеко оставшиеся позади буквы
+                        for (let i = letters.length - 1; i >= 0; i--) {
+                            if (letters[i].mesh.position.z > ball.position.z + 50) {
+                                letters[i].mesh.dispose();
+                                letters.splice(i, 1);
                             }
                         }
                     };
@@ -328,9 +381,9 @@
                         if (evt.keyCode === 32) { // Пробел
                             jump();
                         } else if (evt.keyCode === 37) { // Стрелка влево
-                            horizontalMovement = 0.2; // ИСПРАВЛЕНО: правильное направление влево
+                            horizontalMovement = 0.2; // Правильное направление влево
                         } else if (evt.keyCode === 39) { // Стрелка вправо
-                            horizontalMovement = -0.2; // ИСПРАВЛЕНО: правильное направление вправо
+                            horizontalMovement = -0.2; // Правильное направление вправо
                         }
                     };
                     
@@ -410,11 +463,11 @@
                         let isTouchingLeft = false;
                         let isTouchingRight = false;
                         
-                        // Обработка кнопки влево - ИСПРАВЛЕНО
+                        // Обработка кнопки влево
                         leftBtn.addEventListener('touchstart', function(e) {
                             e.preventDefault();
                             isTouchingLeft = true;
-                            horizontalMovement = -0.2; // ИСПРАВЛЕНО: правильное направление влево
+                            horizontalMovement = -0.2; // Правильное направление влево
                             leftBtn.classList.add('active');
                         }, {passive: false});
                         
@@ -425,11 +478,11 @@
                             leftBtn.classList.remove('active');
                         }, {passive: false});
                         
-                        // Обработка кнопки вправо - ИСПРАВЛЕНО
+                        // Обработка кнопки вправо
                         rightBtn.addEventListener('touchstart', function(e) {
                             e.preventDefault();
                             isTouchingRight = true;
-                            horizontalMovement = 0.2; // ИСПРАВЛЕНО: правильное направление вправо
+                            horizontalMovement = 0.2; // Правильное направление вправо
                             rightBtn.classList.add('active');
                         }, {passive: false});
                         
@@ -449,21 +502,25 @@
                         }, {passive: false});
                     }
                     
-                    // Функция для проверки сбора колец
-                    const checkRingCollection = function() {
-                        for (let i = rings.length - 1; i >= 0; i--) {
-                            const ring = rings[i];
-                            const distance = BABYLON.Vector3.Distance(ball.position, ring.position);
+                    // Функция для проверки сбора букв
+                    const checkLetterCollection = function() {
+                        for (let i = letters.length - 1; i >= 0; i--) {
+                            const letter = letters[i];
+                            const distance = BABYLON.Vector3.Distance(ball.position, letter.mesh.position);
                             
-                            // Если мяч коснулся кольца
+                            // Если мяч коснулся буквы
                             if (distance < 1.5) {
-                                // Увеличиваем счет
-                                score += 10;
+                                // Увеличиваем счет в зависимости от типа буквы
+                                if (letter.isM) {
+                                    score += 10; // M - 10 очков
+                                } else {
+                                    score += 15; // H - 15 очков
+                                }
                                 document.getElementById('scoreDisplay').textContent = "Счет: " + score;
                                 
-                                // Удаляем кольцо
-                                ring.dispose();
-                                rings.splice(i, 1);
+                                // Удаляем букву
+                                letter.mesh.dispose();
+                                letters.splice(i, 1);
                             }
                         }
                     };
@@ -494,12 +551,12 @@
                         // Камера смотрит на мяч
                         camera.setTarget(ball.position);
                         
-                        // Проверка сбора колец
-                        checkRingCollection();
+                        // Проверка сбора букв
+                        checkLetterCollection();
                         
-                        // Анимация вращения колец
-                        for (const ring of rings) {
-                            ring.rotation.y += 0.02;
+                        // Анимация букв - вращение вокруг своей оси
+                        for (const letter of letters) {
+                            letter.mesh.rotation.y += 0.02;
                         }
                         
                         // Проверка падения в пропасть
