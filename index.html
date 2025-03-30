@@ -181,6 +181,15 @@
                     // Массив для хранения всех объектов платформ
                     const rails = [];
                     
+                    // Массив для хранения колец
+                    const rings = [];
+                    
+                    // Система бесконечных платформ
+                    let lastPlatformZ = 0; // Позиция последней созданной платформы
+                    const platformHeight = 1; // Высота платформ
+                    let baseY = 0; // Базовая высота (осевая линия)
+                    let lastBaseY = 0; // Последняя базовая высота для плавного перехода
+                    
                     // Функция для создания рельса
                     const createRail = function(posX, posY, posZ, width, height, length) {
                         const rail = BABYLON.MeshBuilder.CreateBox("rail", {
@@ -212,26 +221,6 @@
                         return rail;
                     };
                     
-                    // Создаем уровень из рельсов с промежутками
-                    // Начальный рельс
-                    createRail(0, 0, 0, 4, 1, 15);
-                    
-                    // Рельс после первого промежутка
-                    // Промежуток уменьшен для лучшей играбельности
-                    createRail(0, 0, -17, 4, 1, 10);
-                    
-                    // Рельс с поворотом вправо
-                    createRail(5, 0, -30, 4, 1, 10);
-                    
-                    // Рельс с поворотом влево
-                    createRail(0, 0, -45, 4, 1, 10);
-                    
-                    // Финальный рельс
-                    createRail(0, 0, -60, 6, 1, 10);
-                    
-                    // Добавляем кольца для сбора (как в оригинальном Сонике)
-                    const rings = [];
-                    
                     // Функция для создания кольца
                     const createRing = function(posX, posY, posZ) {
                         const ring = BABYLON.MeshBuilder.CreateTorus("ring", {
@@ -252,17 +241,82 @@
                         return ring;
                     };
                     
-                    // Добавляем кольца на платформы и над промежутками
-                    createRing(0, 1.5, -5);
-                    createRing(0, 1.5, -10);
-                    createRing(0, 2.0, -13.5); // Над первым промежутком
-                    createRing(0, 1.5, -20);
-                    createRing(2.5, 1.5, -25);
-                    createRing(5, 2.0, -26.5); // Над вторым промежутком
-                    createRing(5, 1.5, -35);
-                    createRing(2.5, 2.0, -40); // Над третьим промежутком
-                    createRing(0, 1.5, -50);
-                    createRing(0, 1.5, -55);
+                    // Функция для создания новой случайной платформы
+                    const createRandomPlatform = function() {
+                        // Случайное смещение по X от -4 до 4
+                        const offsetX = (Math.random() * 8) - 4;
+                        
+                        // Случайное смещение по Y, не превышающее высоту платформы
+                        // Используем небольшую долю высоты для плавной кривой
+                        const offsetY = ((Math.random() * 2) - 1) * (platformHeight * 0.7);
+                        
+                        // Обновляем базовую высоту с плавным переходом
+                        baseY = lastBaseY + offsetY;
+                        lastBaseY = baseY;
+                        
+                        // Ограничиваем максимальную и минимальную высоту
+                        baseY = Math.max(-3, Math.min(3, baseY));
+                        
+                        // Случайная длина платформы (от 8 до 15)
+                        const length = 8 + Math.random() * 7;
+                        
+                        // Случайная ширина платформы (от 3 до 5)
+                        const width = 3 + Math.random() * 2;
+                        
+                        // Создаем платформу
+                        const newZ = lastPlatformZ - 5 - Math.random() * 5; // Промежуток от 5 до 10 единиц
+                        const platform = createRail(offsetX, baseY, newZ, width, platformHeight, length);
+                        
+                        // Обновляем позицию последней платформы
+                        lastPlatformZ = newZ - length/2;
+                        
+                        // Случайно добавляем кольца на платформу
+                        if (Math.random() > 0.3) { // 70% шанс для колец
+                            const ringCount = Math.floor(1 + Math.random() * 3); // 1-3 кольца
+                            for (let i = 0; i < ringCount; i++) {
+                                const ringZ = newZ + (Math.random() * length) - length/2;
+                                const ringX = offsetX + (Math.random() * width/2) - width/4;
+                                createRing(ringX, baseY + platformHeight/2 + 1.5, ringZ);
+                            }
+                        }
+                        
+                        return platform;
+                    };
+                    
+                    // Функция проверки необходимости создания новых платформ
+                    const checkAndCreatePlatforms = function() {
+                        // Если игрок приближается к последней платформе, создаем новые
+                        if (ball.position.z < lastPlatformZ + 50) {
+                            for (let i = 0; i < 5; i++) { // Создаем 5 платформ за раз
+                                createRandomPlatform();
+                            }
+                        }
+                        
+                        // Удаляем далеко оставшиеся позади платформы
+                        for (let i = rails.length - 1; i >= 0; i--) {
+                            if (rails[i].position.z > ball.position.z + 50) {
+                                rails[i].mesh.dispose();
+                                rails.splice(i, 1);
+                            }
+                        }
+                        
+                        // Удаляем далеко оставшиеся позади кольца
+                        for (let i = rings.length - 1; i >= 0; i--) {
+                            if (rings[i].position.z > ball.position.z + 50) {
+                                rings[i].dispose();
+                                rings.splice(i, 1);
+                            }
+                        }
+                    };
+                    
+                    // Создаем начальную платформу
+                    createRail(0, 0, 0, 5, platformHeight, 15);
+                    lastPlatformZ = -15; // Конец начальной платформы
+                    
+                    // Создаем несколько начальных платформ
+                    for (let i = 0; i < 10; i++) {
+                        createRandomPlatform();
+                    }
                     
                     // Переменные для управления
                     let forwardSpeed = -0.2;  // Скорость вперёд (отрицательная по Z)
@@ -274,9 +328,9 @@
                         if (evt.keyCode === 32) { // Пробел
                             jump();
                         } else if (evt.keyCode === 37) { // Стрелка влево
-                            horizontalMovement = -0.2;
+                            horizontalMovement = -0.2; // ИСПРАВЛЕНО: правильное направление влево
                         } else if (evt.keyCode === 39) { // Стрелка вправо
-                            horizontalMovement = 0.2;
+                            horizontalMovement = 0.2; // ИСПРАВЛЕНО: правильное направление вправо
                         }
                     };
                     
@@ -356,11 +410,11 @@
                         let isTouchingLeft = false;
                         let isTouchingRight = false;
                         
-                        // Обработка кнопки влево
+                        // Обработка кнопки влево - ИСПРАВЛЕНО
                         leftBtn.addEventListener('touchstart', function(e) {
                             e.preventDefault();
                             isTouchingLeft = true;
-                            horizontalMovement = 0.2;
+                            horizontalMovement = -0.2; // ИСПРАВЛЕНО: правильное направление влево
                             leftBtn.classList.add('active');
                         }, {passive: false});
                         
@@ -371,11 +425,11 @@
                             leftBtn.classList.remove('active');
                         }, {passive: false});
                         
-                        // Обработка кнопки вправо
+                        // Обработка кнопки вправо - ИСПРАВЛЕНО
                         rightBtn.addEventListener('touchstart', function(e) {
                             e.preventDefault();
                             isTouchingRight = true;
-                            horizontalMovement = -0.2;
+                            horizontalMovement = 0.2; // ИСПРАВЛЕНО: правильное направление вправо
                             rightBtn.classList.add('active');
                         }, {passive: false});
                         
@@ -416,6 +470,9 @@
                     
                     // Обновление игры на каждом кадре
                     scene.registerBeforeRender(function() {
+                        // Проверка и создание новых платформ
+                        checkAndCreatePlatforms();
+                        
                         // Движение мяча вперед автоматически и по горизонтали
                         const currentVelocity = ball.physicsImpostor.getLinearVelocity();
                         ball.physicsImpostor.setLinearVelocity(
